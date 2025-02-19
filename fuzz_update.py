@@ -495,6 +495,74 @@ class BgpUpdateFuzzer_8(BaseUpdateFuzzer):
         self.session_handle.connect(s_get('BGP_KEEPALIVE'),s_get('BGP_UPDATE'))
         self.session_handle.fuzz()
 
+
+
+'''
+BGP UPDATE #9
+
+- BGP header length is correct
+- withdrawn routes length is 0
+- ... followed by Path Attributes
+'''
+class BgpUpdateFuzzer_9(BaseUpdateFuzzer):
+    def __init__(self, bgp_id, asn_id, rhost, rpc_port=1234, rport='179', hold_time=240):
+        super().__init__(bgp_id, asn_id, rhost, rpc_port, rport, hold_time)
+        self.poc_name = 'BgpUpdateFuzzer_9_testcase_%s.py'
+
+    def do_fuzz(self):
+        PARAM_ASN_ID = self.asn_id
+        PARAM_BGP_ID = self.bgp_id
+        PARAM_HOLD_TIME = self.hold_time
+
+        s_initialize('BGP_OPEN')
+        with s_block('HEADER'):
+            s_static(name='marker', value=b'\xff' * 16)
+            s_size(block_name="BGP_OPEN", length=2, endian="big", fuzzable=False, name="Length")  # Length
+            s_static(name='type', value=b'\x01')
+        with s_block('OPEN_MSG'):
+            s_static(value=b"\x04", name="Version")  # BGP Version
+            s_word(name='my_as', value=PARAM_ASN_ID, endian=BIG_ENDIAN, fuzzable=False)
+            s_static(value=b"\x00\xb4", name="Hold Time")  # Hold Time
+            s_static(name='bgp_identifier', value=helpers.ip_str_to_bytes(PARAM_BGP_ID))
+            s_static(value=b"\x06", name="Opt Params Length")  # Optional Params Length
+            s_static(value=b"\x02\x04\x40\x02\x80\x78", name="Opt Params")
+
+        s_initialize('BGP_KEEPALIVE')
+        with s_block('HEADER'):
+            s_static(name='marker', value=b'\xff' * 16)
+            s_static(name='length', value=b'\x00\x13')
+            s_static(name='type', value=b'\x04')
+
+        s_initialize('BGP_UPDATE')
+        with s_block("BGP_UPDATE"):
+            s_static(value=b"\xff" * 16, name="Marker")  # Marker
+            s_size(block_name="BGP_UPDATE", length=2, endian="big", fuzzable=False, name="Length")  # Length
+            s_static(value=b"\x02", name="Type")  # Type (UPDATE)
+            with s_block("BGP_UPDATE Body"):
+                s_static(value=b"\x00\x00", name="Withdrawn Routes Length")  # Withdrawn Routes Length
+                s_size(block_name="Path Attributes", length=2, endian="big", fuzzable=False,
+                       name="Path Attributes Length")
+                with s_block("Path Attributes"):
+                    with s_block("Path Attribute"):
+                        s_byte(value=0xc0, fuzzable=True, name="Attr Flags")  # Attribute flags
+                        s_byte(value=255, fuzzable=True, name="Attr Type")  # Attribute type code
+                        s_size(block_name="Attr Value", length=1, endian="big", fuzzable=True, name="Attr Length")
+                        s_string(value="dummy_attr_value", name="Attr Value", fuzzable=True,
+                                 max_len=0)  # Attribute value
+                        # s_string(value="dummy_attr_value", name="Attr Value", fuzzable=True)  # Attribute value
+                with s_block("NLRI"):
+                    s_byte(value=24, name="Prefix Length 1")  # Prefix length
+                    s_static(value=b"\x6f\x00\x00", name="Prefix 1")  # Address (111.0.0.0)
+                    s_byte(value=24, name="Prefix Length 2")  # Prefix length
+                    s_static(value=b"\x6f\x01\x00", name="Prefix 2")  # Address (111.1.0.0)
+        self.session_handle.connect(s_get('BGP_OPEN'))
+        self.session_handle.connect(s_get('BGP_OPEN'), s_get('BGP_KEEPALIVE'))
+        self.session_handle.connect(s_get('BGP_KEEPALIVE'), s_get('BGP_UPDATE'))
+        self.session_handle.fuzz()
+
+
+
+
 '''
 Modify this code to choose different test suites and parameters.
 '''
@@ -525,4 +593,5 @@ if __name__ == '__main__':
     #fuzzer = BgpUpdateFuzzer_6(bgp_id=FBGP_ID, asn_id=FASN, rhost=TIP, rpc_port=TRPC_PORT)
     #fuzzer = BgpUpdateFuzzer_7(bgp_id=FBGP_ID, asn_id=FASN, rhost=TIP, rpc_port=TRPC_PORT)
     #fuzzer = BgpUpdateFuzzer_8(bgp_id=FBGP_ID, asn_id=FASN, rhost=TIP, rpc_port=TRPC_PORT)
+    #fuzzer = BgpUpdateFuzzer_9(bgp_id=FBGP_ID, asn_id=FASN, rhost=TIP, rpc_port=TRPC_PORT)
     fuzzer.do_fuzz()
